@@ -1,0 +1,55 @@
+.program elkread
+
+.define public PIN_DA0 2
+.define public PIN_O0 18
+.define public PIN_RW 19
+.define public PIN_CS 15
+.define public PIN_SEL1 26
+
+.define NOTHING 0b111
+.define ADDRESS_LOW 0b011
+.define ADDRESS_HIGH 0b101
+.define DATA 0b110
+
+.side_set 3 opt
+    wait 1 GPIO PIN_O0      side NOTHING                ; sm starts at 6502 bus cycle
+
+loop:
+    wait 0 GPIO PIN_CS      side ADDRESS_LOW            ; wait  until sideways ram area selected (bank = don't care)
+
+    in PINS 8                                           ; read address 0-7
+    jmp PIN handle_read     side ADDRESS_HIGH           ; test for read and select address 8-15
+    nop [1]                                             ; delay for 74LVC245
+    nop [1]
+    set y 1 [1]
+    in PINS 8                                           ; read address 8-15
+
+    wait 0 GPIO PIN_O0      side DATA                   ; wait for clock 1 -> 0
+    in PINS 8                                           ; read data (from 6502 to Pico)
+    in y 8                                              ; 1 indicateds 6502 write
+    jmp loop
+
+handle_read:                                            ; write date from Pico to 6502
+    nop [1]                                             ; delay for 74LVS245
+    nop [1]
+    nop [1]
+    in PINS 8                                           ; read addess 8-15
+    in NULL 16                                          ; pad with zeros
+    wait 0 GPIO PIN_O0                                  ; wait for clock 1 -> 0
+    jmp loop
+
+% c-sdk {
+
+    void elkread_program_init(PIO pio, uint sm, uint offset) {
+        pio_sm_config c = elkread_program_get_default_config(offset);
+        sm_config_set_jmp_pin (&c, elkread_PIN_RW);
+        sm_config_set_in_pins(&c, elkread_PIN_DA0);
+        sm_config_set_set_pins(&c, elkread_PIN_SEL1, 3);
+        sm_config_set_sideset(&c, 4, true, false);
+        sm_config_set_sideset_pins(&c, elkread_PIN_SEL1);
+        sm_config_set_in_shift(&c, true, true, 32);
+        pio_sm_set_consecutive_pindirs(pio, sm, elkread_PIN_SEL1, 3, true);
+        pio_sm_init(pio, sm, offset, &c);
+        }
+
+%}

@@ -1,0 +1,36 @@
+.program elkwrite
+
+.define public PIN_DA0 2
+.define public PIN_O0 18
+.define public PIN_RW 19
+.define public PIN_CS 15
+.define public PIN_SEL1 26
+
+.define NOTHING 0b111
+.define ADDRESS_LOW 0b011
+.define ADDRESS_HIGH 0b101
+.define DATA 0b110
+
+.side_set 3 opt
+
+.wrap_target
+    pull block                              ; wait for cpu to send data
+    out PINS 8      side DATA               ; first byte is the data
+    out PINDIRS 8                           ; second byte is 0xFF
+    wait 1 GPIO PIN_CS                      ; wait for clock 1
+    wait 1 GPIO PIN_O0                      ; wait for clock 0
+    out PINDIRS 8   side NOTHING            ; third bye is 0x00
+.wrap
+
+% c-sdk {
+
+    void elkwrite_program_init(PIO pio, uint sm, uint offset) {
+        pio_sm_config c = elkwrite_program_get_default_config(offset);
+        sm_config_set_out_pins(&c, elkwrite_PIN_DA0, 8);
+        sm_config_set_set_pins(&c, elkwrite_PIN_DA0, 8);
+        sm_config_set_sideset(&c, 4, true, false);
+        sm_config_set_sideset_pins(&c, elkwrite_PIN_SEL1);
+        pio_sm_init(pio, sm, offset, &c);
+        }
+
+%}
