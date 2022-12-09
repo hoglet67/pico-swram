@@ -17,8 +17,8 @@
     pull block                              ; wait for cpu to send data
     out PINS 8      side DATA               ; first byte is the data
     out PINDIRS 8                           ; second byte is 0xFF
-    wait 1 GPIO PIN_CS                      ; wait for clock 1
-    wait 1 GPIO PIN_O0                      ; wait for clock 0
+    wait 1 GPIO PIN_O0                      ; wait for clock 1
+    wait 0 GPIO PIN_O0                      ; wait for clock 0
     out PINDIRS 8   side NOTHING            ; third bye is 0x00
 .wrap
 
