@@ -17,12 +17,8 @@ add_executable(${PROJECT_NAME}
 
 # Create C header files with the name <pio program>.pio.h
 pico_generate_pio_header(${PROJECT_NAME}
-        ${CMAKE_CURRENT_LIST_DIR}/elkread.pio
+        ${CMAKE_CURRENT_LIST_DIR}/swram.pio
 )
-pico_generate_pio_header(${PROJECT_NAME}
-        ${CMAKE_CURRENT_LIST_DIR}/elkwrite.pio
-)
-
 
 # create map/bin/hex/uf2 files.
 pico_add_extra_outputs(${PROJECT_NAME})

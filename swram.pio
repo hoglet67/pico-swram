@@ -1,0 +1,87 @@
+.define public PIN_AD_BASE     2
+.define public PIN_NOE        15
+.define public PIN_O0         18
+.define public PIN_RNW        19
+.define public PIN_SEL_BASE   26
+.define public PIN_SELDT      (PIN_SEL_BASE + 0)
+.define public PIN_SELAH      (PIN_SEL_BASE + 1)
+.define public PIN_SELAL      (PIN_SEL_BASE + 2)
+
+.define        NOTHING        0b111
+.define        ADDRESS_LOW    0b011
+.define        ADDRESS_HIGH   0b101
+.define        DATA           0b110
+
+.define public SYSCLK_MHZ     125
+.define        DELAY_NS       150
+.define        DELAY_CYCLES   ((DELAY_NS*SYSCLK_MHZ)/1000)
+
+
+.program sample_noe
+.wrap_target
+start:
+    wait 1 gpio PIN_O0                          ; wait for the clock to go high
+    wait 0 gpio PIN_O0                          ; wait for the clock to go low
+    set  y DELAY_CYCLES
+delay:                                          ; delay to allow nOE to stableize
+    jmp  y-- delay
+    jmp  pin start                              ; sample nOE and jump back to start if high (not being accessed)
+    irq  set 0                                  ; set irq 0 flag to trigger the next state machine
+.wrap
+
+
+.program access_ram
+.side_set 3 opt
+.wrap_target
+start:
+    wait 1 irq 0             side ADDRESS_LOW   ; wait for irq 0, then clear it
+    jmp  pin handle_read                        ; sample RnW and jump to handle_read if high (a read cycle)
+    jmp  start                                  ; back to the start again
+
+handle_read:
+    in   pins 8              side ADDRESS_HIGH  ; shift A7..0 into ISR, then select the high address byts
+    nop  [1]                                    ; delay to allow address to settle:
+    nop  [1]                                    ;     output delay + 74LVC4245 delay + input synch delay)
+    nop  [1]                                    ;     1 cycles + ~10ns + 2/3 cycles = 6 cycles
+    in   pins 6              side DATA          ; shift A13..8 into ISR
+    in   x 18                                   ; shift fixed part of ARM address (held in x) into ISR
+
+    mov  osr ~isr                               ; for testing, just invert the address
+
+    ;; Could auto-push/auto-pull
+    ;; push                                     ; push the ISR which contains the ARM address to the DMA process
+    ;;                                          ; DMA latency expected to be O(10) cycles
+    ;; pull block                               ; pull 8 bits of data from DMA process into the OSR
+
+    out  pins  8                                ; output the 8 bits of data
+    mov  osr ~NULL                              ; OSR=FFFFFFFF
+    wait 1 gpio PIN_O0                          ; wait for the clock to be high (it probably will be already)
+    out  pindirs 8                              ; start driving the data bus
+    mov  osr NULL                               ; OSR=00000000
+    wait 0 gpio PIN_O0                          ; wait for the clock to be low
+    out  pindirs  8           side NOTHING      ; stop driving the data bus
+.wrap
+
+% c-sdk {
+
+    void sample_noe_program_init(PIO pio, uint sm, uint offset) {
+        pio_sm_config c = sample_noe_program_get_default_config(offset);
+        sm_config_set_jmp_pin (&c, PIN_NOE);
+        pio_sm_init(pio, sm, offset, &c);
+        }
+
+    void access_ram_program_init(PIO pio, uint sm, uint offset) {
+        pio_sm_config c = access_ram_program_get_default_config(offset);
+        sm_config_set_jmp_pin (&c, PIN_RNW);
+        sm_config_set_in_pins(&c, PIN_AD_BASE);
+        sm_config_set_out_pins(&c, PIN_AD_BASE, 8);
+//        sm_config_set_set_pins(&c, PIN_SEL_BASE, 3);
+        sm_config_set_sideset(&c, 4, true, false);
+        sm_config_set_sideset_pins(&c, PIN_SEL_BASE);
+        sm_config_set_in_shift(&c, true, false, 32); // shift right=true, auto-push=false
+        sm_config_set_out_shift(&c, true, false, 32); // shift right=true, auto-pull=false
+        pio_sm_set_consecutive_pindirs(pio, sm, PIN_SEL_BASE, 3, true);
+        pio_sm_init(pio, sm, offset, &c);
+        }
+
+%}

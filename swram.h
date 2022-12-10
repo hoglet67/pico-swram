@@ -14,7 +14,3 @@
 #define GPIO_PIN_SELAL 28
 #define GPIO_PIN_SELAH 27
 #define GPIO_PIN_SELDT 26
-
-static PIO pio = pio1;
-
-volatile uint8_t memory[0x4000] = "Pi Pico says 'hello' to Acorn Electron!";            // Sideway RAM/ROM area
