@@ -1,12 +1,14 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "pico/stdlib.h"
 #include "hardware/dma.h"
 #include "swram.pio.h"
 
 #include "swram.h"
+#include "adt_rom.h"
 
 static PIO pio = pio1;
 
@@ -90,6 +92,9 @@ int main() {
 
    // The system clock speed is set as a constant in the PIO file
    set_sys_clock_khz(SYSCLK_MHZ * 1000, true);
+
+   // Copy the ADT ROM
+   memcpy(memory, adt_rom, 0x4000);
 
    // The AD pins are bidirectional, so the need initializing
    for (uint pin = PIN_AD_BASE; pin < PIN_AD_BASE + 8; pin++) {
