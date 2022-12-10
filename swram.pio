@@ -46,12 +46,12 @@ handle_read:
     in   pins 6              side DATA          ; shift A13..8 into ISR
     in   x 18                                   ; shift fixed part of ARM address (held in x) into ISR
 
-    mov  osr ~isr                               ; for testing, just invert the address
+    ;; mov  osr ~isr                            ; for testing, just invert the address
 
-    ;; Could auto-push/auto-pull
-    ;; push                                     ; push the ISR which contains the ARM address to the DMA process
-    ;;                                          ; DMA latency expected to be O(10) cycles
-    ;; pull block                               ; pull 8 bits of data from DMA process into the OSR
+    ;; Could auto-push/auto-pull and save a few cycles
+    push                                        ; push the ISR which contains the ARM address to the DMA process
+                                                ; DMA latency expected to be O(10) cycles
+    pull block                                  ; pull 8 bits of data from DMA process into the OSR
 
     out  pins  8                                ; output the 8 bits of data
     mov  osr ~NULL                              ; OSR=FFFFFFFF
@@ -75,7 +75,6 @@ handle_read:
         sm_config_set_jmp_pin (&c, PIN_RNW);
         sm_config_set_in_pins(&c, PIN_AD_BASE);
         sm_config_set_out_pins(&c, PIN_AD_BASE, 8);
-//        sm_config_set_set_pins(&c, PIN_SEL_BASE, 3);
         sm_config_set_sideset(&c, 4, true, false);
         sm_config_set_sideset_pins(&c, PIN_SEL_BASE);
         sm_config_set_in_shift(&c, true, false, 32); // shift right=true, auto-push=false
