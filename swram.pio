@@ -12,25 +12,41 @@
 .define        ADDRESS_HIGH   0b101
 .define        DATA           0b110
 
-.define public SYSCLK_MHZ     125
+.define public SYSCLK_MHZ     200
+
 .define        DELAY_NS       150
-.define        DELAY_CYCLES   ((DELAY_NS*SYSCLK_MHZ)/1000)
+.define        GLITCH_NS       25
+.define        GLITCH_CYCLES   (GLITCH_NS*SYSCLK_MHZ)/1000
+.define        DELAY_CYCLES   (((DELAY_NS*SYSCLK_MHZ)/1000) - GLITCH_CYCLES)
 
+.program sample_noe                             ; 12 instructions
 
-.program sample_noe
 .wrap_target
-start:
-    wait 1 gpio PIN_O0                          ; wait for the clock to go high
-    wait 0 gpio PIN_O0                          ; wait for the clock to go low
+wait_for_clock_high:
+    wait 1 gpio PIN_O0 [GLITCH_CYCLES-1]        ; wait for the clock to go high
+
+    jmp pin wait_for_clock_low                  ; reject high glitches < GLITCH_NS in length
+    jmp wait_for_clock_high
+
+wait_for_clock_low:
+    wait 0 gpio PIN_O0 [GLITCH_CYCLES-1]        ; wait for the clock to go low
+
+    jmp pin wait_for_clock_low                  ; reject low glitches < GLITCH_NS in length
+
     set  y DELAY_CYCLES
-delay:                                          ; delay to allow nOE to stableize
+delay:                                          ; delay to allow nOE to stablize
     jmp  y-- delay
-    jmp  pin start                              ; sample nOE and jump back to start if high (not being accessed)
+
+    in   pins 1                                 ; sample just nOE
+    in   null 31                                ; pad with zeros
+    mov  y isr                                  ; Y = ISR = nOE
+    jmp  y-- wait_for_clock_high                ; jump back to start if nOE is high (not being accessed)
+
     irq  set 0                                  ; set irq 0 flag to trigger the next state machine
 .wrap
 
 
-.program access_ram
+.program access_ram                             ; 17 instructions
 .side_set 3 opt
 .wrap_target
 start:
@@ -61,7 +77,9 @@ handle_read:
 
     void sample_noe_program_init(PIO pio, uint sm, uint offset) {
         pio_sm_config c = sample_noe_program_get_default_config(offset);
-        sm_config_set_jmp_pin (&c, PIN_NOE);
+        sm_config_set_jmp_pin (&c, PIN_O0);
+        sm_config_set_in_pins(&c, PIN_NOE);
+        sm_config_set_in_shift(&c, true, false, 32);  // shift right=true, auto-push=false
         pio_sm_init(pio, sm, offset, &c);
         }
 
