@@ -43,7 +43,7 @@ handle_read:
     nop  [1]                                    ; delay to allow address to settle:
     nop  [1]                                    ;     output delay + 74LVC4245 delay + input synch delay)
     nop  [1]                                    ;     1 cycles + ~10ns + 2/3 cycles = 6 cycles
-    in   pins 6              side DATA          ; shift A13..8 into ISR
+    in   pins 6              side NOTHING       ; shift A13..8 into ISR
     in   x 18                                   ; shift fixed part of ARM address (held in x) into ISR
                                                 ; 32-bits accumulated, so auto-push will happen
                                                 ; DMA latency expected to be O(10) cycles
@@ -51,7 +51,7 @@ handle_read:
     out  pins 8                                 ; output the 8 bits of data
     mov  osr ~NULL                              ; OSR=FFFFFFFF
     wait 1 gpio PIN_O0                          ; wait for the clock to be high (it probably will be already)
-    out  pindirs 8                              ; start driving the data bus
+    out  pindirs 8           side DATA          ; start driving the data bus
     mov  osr NULL                               ; OSR=00000000
     wait 0 gpio PIN_O0                          ; wait for the clock to be low
     out  pindirs 8           side NOTHING       ; stop driving the data bus
