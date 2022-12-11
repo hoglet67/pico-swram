@@ -94,7 +94,7 @@ int main() {
    set_sys_clock_khz(SYSCLK_MHZ * 1000, true);
 
    // Copy the ADT ROM
-   memcpy(memory, adt_rom, 0x4000);
+   memcpy((void *)memory, adt_rom, 0x4000);
 
    // The AD pins are bidirectional, so the need initializing
    for (uint pin = PIN_AD_BASE; pin < PIN_AD_BASE + 8; pin++) {
@@ -124,11 +124,15 @@ int main() {
    // Setup the chain DMA for state machine 0
    setup_dma(0);
 
-   // Setip state machne 1, which samples nOE
+   // Setup state machne 1, which samples nOE
    offset = pio_add_program(pio, &sample_noe_program);
    sample_noe_program_init(pio, 1, offset);
    pio_sm_set_enabled(pio, 1, true);
 
+   // Setup state machine 2, which deglitches Phi0
+   offset = pio_add_program(pio, &deglitch_phi0_program);
+   deglitch_phi0_program_init(pio, 2, offset);
+   pio_sm_set_enabled(pio, 2, true);
 
    stdio_init_all();
 
