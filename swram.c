@@ -10,8 +10,8 @@
 #include "swram.h"
 #include "adt_rom.h"
 
-#define SMC_READ  0
-#define SMC_WRITE 1
+#define SMC_WRITE 0
+#define SMC_READ  1
 
 static PIO pio = pio1;
 static PIO pio_deglitch = pio0;
@@ -139,18 +139,18 @@ int main() {
    pio_sm_set_enabled(pio, SMC_READ, true);
 
    // Initialize the write state machine (handles write accesses)
-   //access_ram_program_init(pio, SMC_WRITE, offset, 1);
-   //pio_sm_set_enabled(pio, SMC_WRITE, true);
+   access_ram_program_init(pio, SMC_WRITE, offset, 1);
+   pio_sm_set_enabled(pio, SMC_WRITE, true);
 
    // Set the X register in both state machines to the memory base bits 31..14
    set_x(SMC_READ,  ((unsigned) memory) >> 14);
-   //set_x(SMC_WRITE, ((unsigned) memory) >> 14);
+   set_x(SMC_WRITE, ((unsigned) memory) >> 14);
 
    // Setup the DMA chain for state machine 0
    setup_read_dma(SMC_READ);
 
    // Setup the DMA chain for state machine 1
-   //setup_write_dma(SMC_WRITE);
+   setup_write_dma(SMC_WRITE);
 
    stdio_init_all();
 
