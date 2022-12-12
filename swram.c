@@ -10,7 +10,11 @@
 #include "swram.h"
 #include "adt_rom.h"
 
+#define SMC_READ  0
+#define SMC_WRITE 1
+
 static PIO pio = pio1;
+static PIO pio_deglitch = pio0;
 
 volatile uint8_t memory[0x4000] __attribute__((aligned(0x4000)))  = "Pi Pico says 'hello' to Acorn Electron!";            // Sideway RAM/ROM area
 
@@ -55,7 +59,7 @@ volatile uint8_t memory[0x4000] __attribute__((aligned(0x4000)))  = "Pi Pico say
 // a couple of days).
 // So instead we set up both units with transfer count of 1,
 // and get DMA2 to re-trigger DMA1 on completion (via the chain trigger).
-static void setup_dma(unsigned sm)
+static void setup_read_dma(unsigned sm)
 {
 	unsigned dma1, dma2;
 	dma_channel_config cfg;
@@ -88,6 +92,17 @@ static void setup_dma(unsigned sm)
 	dma_channel_set_config(dma1, &cfg, true);
 }
 
+static void setup_write_dma(unsigned sm)
+{
+   // TODO
+}
+
+static void set_x(unsigned smc, unsigned x) {
+   pio_sm_put_blocking(pio, smc, x);
+   pio_sm_exec_wait_blocking(pio, smc, pio_encode_pull(false, false));
+   pio_sm_exec_wait_blocking(pio, smc, pio_encode_mov(pio_x, pio_osr));
+}
+
 int main() {
 
    // The system clock speed is set as a constant in the PIO file
@@ -111,28 +126,31 @@ int main() {
    gpio_set_function(PIN_SELAH, GPIO_FUNC_PIO1);
    gpio_set_function(PIN_SELDT, GPIO_FUNC_PIO1);
 
-   // Setup state machine 0, which handles memory access
-   uint offset = pio_add_program(pio, &access_ram_program);
-   access_ram_program_init(pio, 0, offset);
-   pio_sm_set_enabled(pio, 0, true);
+   // Setup an additional state machine (in the other PIO) to deglitch Phi0
+   uint offset = pio_add_program(pio_deglitch, &deglitch_phi0_program);
+   deglitch_phi0_program_init(pio_deglitch, 0, offset);
+   pio_sm_set_enabled(pio_deglitch, 0, true);
 
-   // Set the X register in SM0 to the memory base
-   pio_sm_put_blocking(pio, 0, ((unsigned) memory) >> 14);
-   pio_sm_exec_wait_blocking(pio, 0, pio_encode_pull(false, false));
-   pio_sm_exec_wait_blocking(pio, 0, pio_encode_mov(pio_x, pio_osr));
+   // Load the access_ram program that's shared by the read and write state machines
+   offset = pio_add_program(pio, &access_ram_program);
 
-   // Setup the chain DMA for state machine 0
-   setup_dma(0);
+   // Initialize the read state machine (handles read accesses)
+   access_ram_program_init(pio, SMC_READ, offset, 0);
+   pio_sm_set_enabled(pio, SMC_READ, true);
 
-   // Setup state machne 1, which samples nOE
-   offset = pio_add_program(pio, &sample_noe_program);
-   sample_noe_program_init(pio, 1, offset);
-   pio_sm_set_enabled(pio, 1, true);
+   // Initialize the write state machine (handles write accesses)
+   //access_ram_program_init(pio, SMC_WRITE, offset, 1);
+   //pio_sm_set_enabled(pio, SMC_WRITE, true);
 
-   // Setup state machine 2, which deglitches Phi0
-   offset = pio_add_program(pio, &deglitch_phi0_program);
-   deglitch_phi0_program_init(pio, 2, offset);
-   pio_sm_set_enabled(pio, 2, true);
+   // Set the X register in both state machines to the memory base bits 31..14
+   set_x(SMC_READ,  ((unsigned) memory) >> 14);
+   //set_x(SMC_WRITE, ((unsigned) memory) >> 14);
+
+   // Setup the DMA chain for state machine 0
+   setup_read_dma(SMC_READ);
+
+   // Setup the DMA chain for state machine 1
+   //setup_write_dma(SMC_WRITE);
 
    stdio_init_all();
 

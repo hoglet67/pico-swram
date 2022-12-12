@@ -12,74 +12,96 @@
 .define        ADDRESS_HIGH   0b101
 .define        DATA           0b110
 
-.define public SYSCLK_MHZ     125
+.define public SYSCLK_MHZ     150
 
 .define        DELAY_NS       150
 .define        GLITCH_NS       25
 .define        GLITCH_CYCLES   (GLITCH_NS*SYSCLK_MHZ)/1000
-.define        DELAY_CYCLES   (((DELAY_NS*SYSCLK_MHZ)/1000) - GLITCH_CYCLES)
+.define        DELAY_CYCLES   (((DELAY_NS*SYSCLK_MHZ)/1000) - GLITCH_CYCLES - 4)
 
-.define        cycle_start     0                ; irq flag to indicate the start of a bus cycle
-.define        cycle_active    1                ; irq flag to indivate an active bus cycle (nOE low)
-.define        cycle_end       2                ; irq flag to indicate the end of a bus cycle
+.define        cycle_start     0                        ; irq flag to indicate the start of a bus cycle
 
-.program deglitch_phi0
+
+;;
+;; DEGLITCH STATE MACHINE
+;;
+;; Hopefully this will go away when we have PCB based construction
+
+.program deglitch_phi0                                  ; 7 instructions
 .wrap_target
 wait_for_clock_high:
-    wait 1 gpio PIN_O0 [GLITCH_CYCLES-1]        ; wait for the clock to go high
+    wait 1 gpio PIN_O0 [GLITCH_CYCLES-1]                ; wait for the clock to go high
 
-    jmp  pin wait_for_clock_low                 ; reject high glitches < GLITCH_NS in length
+    jmp  pin wait_for_clock_low                         ; reject high glitches < GLITCH_NS in length
     jmp  wait_for_clock_high
 
 wait_for_clock_low:
-    wait 0 gpio PIN_O0 [GLITCH_CYCLES-1]        ; wait for the clock to go low
+    wait 0 gpio PIN_O0 [GLITCH_CYCLES-1]                ; wait for the clock to go low
 
-    jmp  pin wait_for_clock_low                 ; reject low glitches < GLITCH_NS in length
+    jmp  pin wait_for_clock_low                         ; reject low glitches < GLITCH_NS in length
 
-    irq  set cycle_start                        ; indicates the start of the bus cycle (after deglitching)
-    irq  set cycle_end                          ; indicates the end of the bus cycle (after deglitching)
-
+    irq  clear cycle_start [3]                          ; blip cycle start low for four cycle to indicate the start of the bus cycle
+    irq  set   cycle_start
 .wrap
 
 
-.program sample_noe
-.wrap_target
-start:
-    wait 1 irq cycle_start                      ; wait and clear the cycle_start irq
-    set  y DELAY_CYCLES
-delay:                                          ; delay to allow nOE to stableize
-    jmp  y-- delay
-    jmp  pin start                              ; sample nOE and jump back to start if high (not being accessed)
-    irq  set cycle_active                       ; trigger the next state machine
-    irq  clear cycle_end                        ; clear cycle_end so it can be set at the end of this cycle
-.wrap
+;;
+;; ACCESS RAM DEGLITCH STATE MACHINE
+;;
+;; There are two instances of this, one for reads, the other for write, with different wrap targets.
+;;
 
+.program access_ram                                     ; 28 instructions
+.side_set 3
 
-.program access_ram
-.side_set 3 opt
-.wrap_target
-start:
-    wait 1 irq cycle_active  side ADDRESS_LOW   ; wait and clear this cycle_active irq
-    jmp  pin handle_read                        ; sample RnW and jump to handle_read if high (a read cycle)
-    jmp  start                                  ; back to the start again
+public read_wrap_target:
+    jmp  pin read_data                side DATA         ; sample Rnw and only do the FIFO push/pull on read cycles (RnW=1)
+    jmp  idle_data                    side DATA         ; RnW=0, so back to idle
+read_data:
+    in   x 18                         side DATA         ; shift fixed part of ARM address (held in x) into ISR
+    push                              side DATA         ; push the ARM address to the Rx FIFO
+    pull block                        side DATA         ; pull the data from the Tx FIFO into the OSR
+    out  pins 8                       side DATA         ; output 8 bits of data
+    mov  osr ~NULL                    side DATA         ; OSR=FFFFFFFF
+    out  pindirs 8                    side DATA         ; start driving the data bus
 
-handle_read:
-    in   pins 8              side ADDRESS_HIGH  ; shift A7..0 into ISR, then select the high address byts
-    nop  [1]                                    ; delay to allow address to settle:
-    nop  [1]                                    ;     output delay + 74LVC4245 delay + input synch delay)
-    nop  [1]                                    ;     1 cycles + ~10ns + 2/3 cycles = 6 cycles
-    in   pins 6              side NOTHING       ; shift A13..8 into ISR
-    in   x 18                                   ; shift fixed part of ARM address (held in x) into ISR
-                                                ; 32-bits accumulated, so auto-push will happen
-                                                ; DMA latency expected to be O(10) cycles
-    pull block                                  ; pull 8 bits of data from DMA process into the OSR
-    out  pins 8                                 ; output the 8 bits of data
-    mov  osr ~NULL                              ; OSR=FFFFFFFF
-    out  pindirs 8           side DATA          ; start driving the data bus
-    mov  osr NULL                               ; OSR=00000000
-    wait 1 irq cycle_end                        ; wait and clear the cycle_end irq
-    out  pindirs 8           side NOTHING       ; stop driving the data bus
-.wrap
+idle_data:
+    wait 0 irq cycle_start            side DATA         ; wait for the start of the next cycle with data buffers ENABLED
+    set  pindirs 0                    side NOTHING      ; stop driving the data bus
+    jmp  delay [1]                    side NOTHING      ; jump to the noe delay code
+
+public entry_point:                                     ; *** Default Entry Point ***
+
+idle:
+    wait 0 irq cycle_start [3]        side NOTHING      ; wait for the start of the next cycle with data buffers DISABLED
+
+public write_wrap_target:
+delay:
+    set  y DELAY_CYCLES               side NOTHING      ; should be reached 4 instructions after cycle start IN ALL CASES
+loop:
+    jmp  y-- loop                     side ADDRESS_LOW  ; delay to allow nOE to stablize
+
+    in   pins (PIN_NOE+1-PIN_AD_BASE) side ADDRESS_LOW  ; nOE in bit 31 of ISR, other bits unknown
+    in   null 31                      side ADDRESS_LOW  ; nOE now in bit  0 of ISR, other bits cleared
+    mov  y isr                        side ADDRESS_LOW  ; y = nOE (0 or 1)
+    jmp  y-- idle                     side ADDRESS_LOW  ; if nOE is high, then loop back to idle
+
+    in   pins 8 [3]                   side ADDRESS_HIGH ; shift A7..0 into ISR, then select the high address byts
+    nop  [3]                          side ADDRESS_HIGH ; == 1 cycles + ~10ns + 2/3 cycles = 6 cycles
+    in   pins 6                       side ADDRESS_HIGH ; shift A14..8 into ISR
+
+public read_wrap:                                       ; *** READ state machine wraps to read_wrap_target ***
+
+    jmp  pin idle_data                side DATA         ; sample RnW and skip the FIFO push on read cycles (RnW=1)
+    in   x 18                         side DATA         ; shift fixed part of ARM address (held in x) into ISR
+    push                              side DATA         ; push the 32-bit ARM address
+    wait 0 irq cycle_start            side DATA         ; wait for the start of the next cycle with data buffers enabled
+    in   pins 8                       side NOTHING      ; sample read data
+    in   null 24                      side NOTHING      ; pad to 32-bit to allign in LSB
+    push                              side NOTHING      ; push the 32-bit ARM data
+
+public write_wrap:                                      ; *** WRITE state machine wraps to write_wrap_target ***
+
 
 % c-sdk {
 
@@ -90,23 +112,21 @@ handle_read:
         }
 
 
-void sample_noe_program_init(PIO pio, uint sm, uint offset) {
-        pio_sm_config c = sample_noe_program_get_default_config(offset);
-        sm_config_set_jmp_pin (&c, PIN_NOE);
-        pio_sm_init(pio, sm, offset, &c);
-        }
-
-    void access_ram_program_init(PIO pio, uint sm, uint offset) {
+    void access_ram_program_init(PIO pio, uint sm, uint offset, int write_smc) {
         pio_sm_config c = access_ram_program_get_default_config(offset);
         sm_config_set_jmp_pin (&c, PIN_RNW);
         sm_config_set_in_pins(&c, PIN_AD_BASE);
         sm_config_set_out_pins(&c, PIN_AD_BASE, 8);
-        sm_config_set_sideset(&c, 4, true, false);
+        sm_config_set_sideset(&c, 3, false, false);
         sm_config_set_sideset_pins(&c, PIN_SEL_BASE);
-        sm_config_set_in_shift(&c, true, true, 32);  // shift right=true, auto-push=true
-        sm_config_set_out_shift(&c, true, false, 8); // shift right=true, auto-pull=false
+        sm_config_set_in_shift(&c, true, false, 32);  // shift right=true, auto-push=false
+        sm_config_set_out_shift(&c, true, false, 8);  // shift right=true, auto-pull=false
         pio_sm_set_consecutive_pindirs(pio, sm, PIN_SEL_BASE, 3, true);
-        pio_sm_init(pio, sm, offset, &c);
+        if (write_smc) {
+            sm_config_set_wrap(&c, offset + access_ram_offset_write_wrap_target, offset + access_ram_offset_write_wrap - 1);
+        } else {
+            sm_config_set_wrap(&c, offset + access_ram_offset_read_wrap_target,  offset + access_ram_offset_read_wrap  - 1);
         }
-
+        pio_sm_init(pio, sm, offset + access_ram_offset_entry_point, &c);
+        }
 %}
