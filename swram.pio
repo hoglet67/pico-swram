@@ -3,6 +3,10 @@
 .define public PIN_O0         18
 .define public PIN_RNW        19
 .define public PIN_O0_CLEAN   20
+
+;; Note: GPIO 21 didn't work, something else be disabling it!
+.define public PIN_RNW_INV    22
+
 .define public PIN_SEL_BASE   26
 .define public PIN_SELDT      (PIN_SEL_BASE + 0)
 .define public PIN_SELAH      (PIN_SEL_BASE + 1)
@@ -45,6 +49,18 @@ wait_for_clock_low:
 clock_low:
     set  pins 0                                         ; take the cleaned up clock low
 
+.wrap
+
+;;
+;; Invert RnW
+;;
+;; The DIR input of the data bus buffer needs to be driven from !RnW
+
+.program invert_rnw
+.side_set 1
+.wrap_target
+    wait 0 gpio PIN_RNW               side 0           ; RnW high, wait for it to go low
+    wait 1 gpio PIN_RNW               side 1           ; Rnw low, wait for it to go high
 .wrap
 
 
@@ -118,12 +134,19 @@ public write_wrap:                                      ; *** WRITE state machin
         }
 
 
+    void invert_rnw_program_init(PIO pio, uint sm, uint offset) {
+        pio_gpio_init(pio, PIN_RNW_INV);
+        pio_sm_set_consecutive_pindirs(pio, sm, PIN_RNW_INV, 1, true);
+        pio_sm_config c = invert_rnw_program_get_default_config(offset);
+        sm_config_set_sideset_pins(&c, PIN_RNW_INV);
+        pio_sm_init(pio, sm, offset, &c);
+        }
+
     void access_ram_program_init(PIO pio, uint sm, uint offset, int write_smc) {
         pio_sm_config c = access_ram_program_get_default_config(offset);
         sm_config_set_jmp_pin (&c, PIN_RNW);
         sm_config_set_in_pins(&c, PIN_AD_BASE);
         sm_config_set_out_pins(&c, PIN_AD_BASE, 8);
-        sm_config_set_sideset(&c, 3, false, false);
         sm_config_set_sideset_pins(&c, PIN_SEL_BASE);
         sm_config_set_in_shift(&c, true, false, 32);  // shift right=true, auto-push=false
         sm_config_set_out_shift(&c, true, false, 8);  // shift right=true, auto-pull=false

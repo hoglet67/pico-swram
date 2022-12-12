@@ -66,7 +66,6 @@ static void setup_read_dma(unsigned sm)
 
 	dma1 = dma_claim_unused_channel(true);
 	dma2 = dma_claim_unused_channel(true);
-   //	printf("Using DMA%u, DMA%u for SM %u\n", dma1, dma2, sm);
 
 	// Set up DMA2 first (it's not triggered until DMA1 does so)
 	cfg = dma_channel_get_default_config(dma2);
@@ -74,8 +73,39 @@ static void setup_read_dma(unsigned sm)
 		// write increment defaults to false
 		// dreq defaults to DREQ_FORCE
 	channel_config_set_transfer_data_size(&cfg, DMA_SIZE_8);
-	channel_config_set_chain_to(&cfg, dma1);
+	dma_channel_set_trans_count(dma2, 1, false);
 	dma_channel_set_write_addr(dma2, &(pio->txf[sm]), false);
+	channel_config_set_chain_to(&cfg, dma1);
+	dma_channel_set_config(dma2, &cfg, false);
+
+	// Set up DMA1 and trigger it
+	cfg = dma_channel_get_default_config(dma1);
+	channel_config_set_read_increment(&cfg, false);
+		// write increment defaults to false
+	channel_config_set_dreq(&cfg, pio_get_dreq(pio, sm, false));
+		// transfer size defaults to 32
+	dma_channel_set_trans_count(dma1, 1, false);
+	dma_channel_set_read_addr(dma1, &(pio->rxf[sm]), false);
+	dma_channel_set_write_addr(dma1, &(dma_hw->ch[dma2].al3_read_addr_trig), false);
+	dma_channel_set_config(dma1, &cfg, true);
+}
+
+static void setup_write_dma(unsigned sm)
+{
+	unsigned dma1, dma2;
+	dma_channel_config cfg;
+
+	dma1 = dma_claim_unused_channel(true);
+	dma2 = dma_claim_unused_channel(true);
+
+	// Set up DMA2 first (it's not triggered until DMA1 does so)
+	cfg = dma_channel_get_default_config(dma2);
+	channel_config_set_read_increment(&cfg, false);
+		// write increment defaults to false
+	channel_config_set_dreq(&cfg, pio_get_dreq(pio, sm, false));
+	channel_config_set_transfer_data_size(&cfg, DMA_SIZE_8);
+	channel_config_set_chain_to(&cfg, dma1);
+	dma_channel_set_read_addr(dma2, &(pio->rxf[sm]), false);
 	dma_channel_set_trans_count(dma2, 1, false);
 	dma_channel_set_config(dma2, &cfg, false);
 
@@ -87,14 +117,8 @@ static void setup_read_dma(unsigned sm)
 		// transfer size defaults to 32
 	dma_channel_set_trans_count(dma1, 1, false);
 	dma_channel_set_read_addr(dma1, &(pio->rxf[sm]), false);
-	dma_channel_set_write_addr(dma1, &(dma_hw->ch[dma2].al3_read_addr_trig),
-		false);
+	dma_channel_set_write_addr(dma1, &(dma_hw->ch[dma2].al2_write_addr_trig), false);
 	dma_channel_set_config(dma1, &cfg, true);
-}
-
-static void setup_write_dma(unsigned sm)
-{
-   // TODO
 }
 
 static void set_x(unsigned smc, unsigned x) {
@@ -130,6 +154,11 @@ int main() {
    uint offset = pio_add_program(pio_deglitch, &deglitch_phi0_program);
    deglitch_phi0_program_init(pio_deglitch, 0, offset);
    pio_sm_set_enabled(pio_deglitch, 0, true);
+
+   // Setup another additional state machine (in the other PIO) to invert RnW onto PIN_RNW_INV
+   offset = pio_add_program(pio_deglitch, &invert_rnw_program);
+   invert_rnw_program_init(pio_deglitch, 1, offset);
+   pio_sm_set_enabled(pio_deglitch, 1, true);
 
    // Load the access_ram program that's shared by the read and write state machines
    offset = pio_add_program(pio, &access_ram_program);
