@@ -89,7 +89,7 @@ public read_wrap_target:
     jmp  pin read_data                side DATA         ; sample Rnw and only do the FIFO push/pull on read cycles (RnW=1)
     jmp  idle_data                    side DATA         ; RnW=0, so back to idle
 read_data:
-    in   x 18                         side DATA         ; shift fixed part of ARM address (held in x) into ISR
+    in   x 17                         side DATA         ; shift fixed part of ARM address (held in x) into ISR
     push                              side DATA         ; push the ARM address to the Rx FIFO
     pull block                        side DATA         ; pull the data from the Tx FIFO into the OSR
     out  pins 8                       side DATA         ; output 8 bits of data
@@ -119,12 +119,12 @@ loop:
 
     in   pins 8 [3]                   side ADDRESS_HIGH ; shift A7..0 into ISR, then select the high address byts
     nop  [3]                          side ADDRESS_HIGH ; == 1 cycles + ~10ns + 2/3 cycles = 6 cycles
-    in   pins 6                       side ADDRESS_HIGH ; shift A14..8 into ISR
+    in   pins 7                       side ADDRESS_HIGH ; shift A14..8 into ISR
 
 public read_wrap:                                       ; *** READ state machine wraps to read_wrap_target ***
 
     jmp  pin idle_data                side DATA         ; sample RnW and skip the FIFO push on read cycles (RnW=1)
-    in   x 18                         side DATA         ; shift fixed part of ARM address (held in x) into ISR
+    in   x 17                         side DATA         ; shift fixed part of ARM address (held in x) into ISR
     push noblock                      side DATA         ; push the 32-bit ARM address
     wait 0 gpio PIN_CLOCK             side DATA         ; wait for the start of the next cycle with data buffers enabled
     in   pins 8                       side NOTHING      ; sample read data

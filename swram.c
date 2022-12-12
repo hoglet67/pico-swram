@@ -16,7 +16,7 @@
 static PIO pio = pio1;
 static PIO pio_deglitch = pio0;
 
-volatile uint8_t memory[0x4000] __attribute__((aligned(0x4000)))  = "Pi Pico says 'hello' to Acorn Electron!";            // Sideway RAM/ROM area
+volatile uint8_t memory[0x8000] __attribute__((aligned(0x8000)))  = "Pi Pico says 'hello' to Acorn Electron!";            // Sideway RAM/ROM area
 
 //void __no_inline_not_in_flash_func(main_loop())
 //{
@@ -132,8 +132,8 @@ int main() {
    // The system clock speed is set as a constant in the PIO file
    set_sys_clock_khz(SYSCLK_MHZ * 1000, true);
 
-   // Copy the ADT ROM
-   memcpy((void *)memory, adt_rom, 0x4000);
+   // Copy the ADT ROM to ROM 1
+   memcpy((void *)memory + 0x4000, adt_rom, 0x4000);
 
    // The AD pins are bidirectional, so the need initializing
    for (uint pin = PIN_AD_BASE; pin < PIN_AD_BASE + 8; pin++) {
@@ -171,9 +171,9 @@ int main() {
    access_ram_program_init(pio, SMC_WRITE, offset, 1);
    pio_sm_set_enabled(pio, SMC_WRITE, true);
 
-   // Set the X register in both state machines to the memory base bits 31..14
-   set_x(SMC_READ,  ((unsigned) memory) >> 14);
-   set_x(SMC_WRITE, ((unsigned) memory) >> 14);
+   // Set the X register in both state machines to the memory base bits 31..15
+   set_x(SMC_READ,  ((unsigned) memory) >> 15);
+   set_x(SMC_WRITE, ((unsigned) memory) >> 15);
 
    // Setup the DMA chain for state machine 0
    setup_read_dma(SMC_READ);
