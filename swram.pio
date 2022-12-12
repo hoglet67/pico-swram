@@ -66,14 +66,10 @@ clock_low:
 ;; This will go away when we have PCB based construction
 ;;
 ;; The DIR input of the data bus buffer on the Pico AtomVGA board needs to be driven from !RnW for writes to work
-;;
-;; Improvements: mov pins, !pins should work
 
-.program invert_rnw                                    ; 2 instructions
-.side_set 1
+.program invert_rnw                                    ; 1 instruction
 .wrap_target
-    wait 0 gpio PIN_RNW               side 0           ; RnW high, wait for it to go low
-    wait 1 gpio PIN_RNW               side 1           ; Rnw low, wait for it to go high
+    mov  pins, ~pins                                   ; PIN_RNW_INV = !PIN_RNW
 .wrap
 
 
@@ -154,7 +150,8 @@ public write_wrap:                                      ; *** WRITE state machin
         pio_gpio_init(pio, PIN_RNW_INV);
         pio_sm_set_consecutive_pindirs(pio, sm, PIN_RNW_INV, 1, true);
         pio_sm_config c = invert_rnw_program_get_default_config(offset);
-        sm_config_set_sideset_pins(&c, PIN_RNW_INV);
+        sm_config_set_in_pins(&c, PIN_RNW);
+        sm_config_set_out_pins(&c, PIN_RNW_INV, 1);
         pio_sm_init(pio, sm, offset, &c);
         }
 
