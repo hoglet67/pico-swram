@@ -126,7 +126,7 @@ int main() {
    gpio_set_function(PIN_SELAH, GPIO_FUNC_PIO1);
    gpio_set_function(PIN_SELDT, GPIO_FUNC_PIO1);
 
-   // Setup an additional state machine (in the other PIO) to deglitch Phi0
+   // Setup an additional state machine (in the other PIO) to deglitch Phi0 onto PIN_O0_CLEAN
    uint offset = pio_add_program(pio_deglitch, &deglitch_phi0_program);
    deglitch_phi0_program_init(pio_deglitch, 0, offset);
    pio_sm_set_enabled(pio_deglitch, 0, true);
