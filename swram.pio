@@ -4,7 +4,9 @@
 .define public PIN_RNW        19
 .define public PIN_O0_CLEAN   20
 
-;; Note: GPIO 21 didn't work, something else be disabling it!
+;; The 74LVC4245 level shifter needs a DIR that !RnW, so to save adding a chip use the Pico
+;; (this won't be needed on Roland's PCB as he's using 74LVC245)
+;; Note: Using GPIO 21 for PIN_RNW_INV didn't work, something else be disabling it!
 .define public PIN_RNW_INV    22
 
 .define public PIN_SEL_BASE   26
@@ -24,14 +26,20 @@
 .define        GLITCH_CYCLES   (GLITCH_NS*SYSCLK_MHZ)/1000
 .define        DELAY_CYCLES   (((DELAY_NS*SYSCLK_MHZ)/1000) - GLITCH_CYCLES - 6)
 
-.define        cycle_start     0                        ; irq flag to indicate the start of a bus cycle
+;; PIN_CLOCK is the clock used by the access_ram state machines.
+;;
+;; Use one of the following:
+;;   PIN_O0       to use the original Phi0 clock
+;;   PIN_O0_CLEAN to use the deglictched Phi clock (delayed ~50ns)
 
 .define        PIN_CLOCK       PIN_O0_CLEAN
 
 ;;
 ;; DEGLITCH STATE MACHINE
 ;;
-;; Hopefully this will go away when we have PCB based construction
+;; This will go away when we have PCB based construction
+;;
+;; Improvements: Using side select could save two instructions and one cycle latency
 
 .program deglitch_phi0                                  ; 7 instructions
 .wrap_target
@@ -51,12 +59,17 @@ clock_low:
 
 .wrap
 
-;;
-;; Invert RnW
-;;
-;; The DIR input of the data bus buffer needs to be driven from !RnW
 
-.program invert_rnw
+;;
+;; INVERT RNW STATE MACHINE
+;;
+;; This will go away when we have PCB based construction
+;;
+;; The DIR input of the data bus buffer on the Pico AtomVGA board needs to be driven from !RnW for writes to work
+;;
+;; Improvements: mov pins, !pins should work
+
+.program invert_rnw                                    ; 2 instructions
 .side_set 1
 .wrap_target
     wait 0 gpio PIN_RNW               side 0           ; RnW high, wait for it to go low
@@ -68,6 +81,9 @@ clock_low:
 ;; ACCESS RAM DEGLITCH STATE MACHINE
 ;;
 ;; There are two instances of this, one for reads, the other for write, with different wrap targets.
+;;
+;; Both instances are driving side select every cycle, in theory in exact lock-step. If there
+;; were conflicts, I believe the higher number state machine should win, which is the read state machine.
 ;;
 
 .program access_ram                                     ; 28 instructions
