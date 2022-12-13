@@ -39,26 +39,17 @@
 ;;
 ;; This will go away when we have PCB based construction
 ;;
-;; Improvements: Using side select could save two instructions and one cycle latency
 
-.program deglitch_phi0                                  ; 7 instructions
-.wrap_target
-
-wait_for_clock_high:
-    wait 1 gpio PIN_O0 [GLITCH_CYCLES-1]                ; wait for the clock to go high
-    jmp  pin clock_high                                 ; reject high glitches < GLITCH_NS in length
-    jmp  wait_for_clock_high
-clock_high:
-    set  pins 1                                         ; take the cleaned up clock high
-
+.program deglitch_phi0                                  ; 4 instructions
+.side_set 1
 wait_for_clock_low:
-    wait 0 gpio PIN_O0 [GLITCH_CYCLES-1]                ; wait for the clock to go low
-    jmp  pin wait_for_clock_low                         ; reject low glitches < GLITCH_NS in length
-clock_low:
-    set  pins 0                                         ; take the cleaned up clock low
-
+    wait 0 gpio PIN_O0 [GLITCH_CYCLES-1]  side 1        ; wait for the clock to go low
+    jmp  pin wait_for_clock_low           side 1        ; reject low glitches < GLITCH_NS in length
+.wrap_target
+wait_for_clock_high:
+    wait 1 gpio PIN_O0 [GLITCH_CYCLES-1]  side 0        ; wait for the clock to go high
+    jmp  pin wait_for_clock_low           side 0        ; reject high glitches < GLITCH_NS in length
 .wrap
-
 
 ;;
 ;; INVERT RNW STATE MACHINE
@@ -140,7 +131,7 @@ public write_wrap:                                      ; *** WRITE state machin
         pio_gpio_init(pio, PIN_O0_CLEAN);
         pio_sm_set_consecutive_pindirs(pio, sm, PIN_O0_CLEAN, 1, true);
         pio_sm_config c = deglitch_phi0_program_get_default_config(offset);
-        sm_config_set_set_pins(&c, PIN_O0_CLEAN, 1);
+        sm_config_set_sideset_pins(&c, PIN_O0_CLEAN);
         sm_config_set_jmp_pin (&c, PIN_O0);
         pio_sm_init(pio, sm, offset, &c);
         }
