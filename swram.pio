@@ -24,7 +24,7 @@
 .define        DELAY_NS       150
 .define        GLITCH_NS       25
 .define        GLITCH_CYCLES   (GLITCH_NS*SYSCLK_MHZ)/1000
-.define        DELAY_CYCLES   (((DELAY_NS*SYSCLK_MHZ)/1000) - GLITCH_CYCLES - 6)
+.define        DELAY_CYCLES   (((DELAY_NS*SYSCLK_MHZ)/1000) - GLITCH_CYCLES - 4)
 
 ;; PIN_CLOCK is the clock used by the access_ram state machines.
 ;;
@@ -73,14 +73,11 @@ wait_for_clock_high:
 ;; were conflicts, I believe the higher number state machine should win, which is the read state machine.
 ;;
 
-.program access_ram                                     ; 28 instructions
+.program access_ram                                     ; 26 instructions
 .side_set 3
 
 public read_wrap_target:
-    jmp  pin read_data                side DATA         ; sample Rnw and only do the FIFO push/pull on read cycles (RnW=1)
-    jmp  idle_data                    side DATA         ; RnW=0, so back to idle
-read_data:
-    in   x 17                         side DATA         ; shift fixed part of ARM address (held in x) into ISR
+    jmp  !y idle_data                 side DATA         ; Y=Rnw - skip the FIFO push on write cycles (RnW=0)
     push                              side DATA         ; push the ARM address to the Rx FIFO
     pull block                        side DATA         ; pull the data from the Tx FIFO into the OSR
     out  pins 8                       side DATA         ; output 8 bits of data
@@ -103,19 +100,20 @@ delay:
 loop:
     jmp  y-- loop                     side ADDRESS_LOW  ; delay to allow nOE to stablize
 
-    in   pins (PIN_NOE+1-PIN_AD_BASE) side ADDRESS_LOW  ; nOE in bit 31 of ISR, other bits unknown
-    in   null 31                      side ADDRESS_LOW  ; nOE now in bit  0 of ISR, other bits cleared
-    mov  y isr                        side ADDRESS_LOW  ; y = nOE (0 or 1)
-    jmp  y-- idle                     side ADDRESS_LOW  ; if nOE is high, then loop back to idle
+    in   pins (PIN_RNW+1-PIN_AD_BASE) side ADDRESS_LOW  ; RnW in bit 31 of ISR, other bits unknown
+    in   null 31                      side ADDRESS_LOW  ; RnW now in bit  0 of ISR, other bits cleared
+    mov  y isr                        side ADDRESS_LOW  ; y = RnW (0 or 1)
+
+    jmp  pin idle                     side ADDRESS_LOW  ; if nOE is high, then loop back to idle
 
     in   pins 8 [3]                   side ADDRESS_HIGH ; shift A7..0 into ISR, then select the high address byts
     nop  [3]                          side ADDRESS_HIGH ; == 1 cycles + ~10ns + 2/3 cycles = 6 cycles
     in   pins 7                       side ADDRESS_HIGH ; shift A14..8 into ISR
+    in   x 17                         side ADDRESS_HIGH ; shift fixed part of ARM address (held in x) into ISR
 
 public read_wrap:                                       ; *** READ state machine wraps to read_wrap_target ***
 
-    jmp  pin idle_data                side DATA         ; sample RnW and skip the FIFO push on read cycles (RnW=1)
-    in   x 17                         side DATA         ; shift fixed part of ARM address (held in x) into ISR
+    jmp  y-- idle_data                side DATA         ; Y=Rnw - skip the FIFO push on read cycles (RnW=1)
     push noblock                      side DATA         ; push the 32-bit ARM address
     wait 0 gpio PIN_CLOCK             side DATA         ; wait for the start of the next cycle with data buffers enabled
     in   pins 8                       side NOTHING      ; sample read data
@@ -148,7 +146,7 @@ public write_wrap:                                      ; *** WRITE state machin
 
     void access_ram_program_init(PIO pio, uint sm, uint offset, int write_smc) {
         pio_sm_config c = access_ram_program_get_default_config(offset);
-        sm_config_set_jmp_pin (&c, PIN_RNW);
+        sm_config_set_jmp_pin (&c, PIN_NOE);
         sm_config_set_in_pins(&c, PIN_AD_BASE);
         sm_config_set_out_pins(&c, PIN_AD_BASE, 8);
         sm_config_set_sideset_pins(&c, PIN_SEL_BASE);
