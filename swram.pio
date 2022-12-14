@@ -74,7 +74,7 @@ wait_for_clock_high:
 ;; were conflicts, I believe the higher number state machine should win, which is the read state machine.
 ;;
 
-.program access_ram                                     ; 24 instructions
+.program access_ram                                     ; 27 instructions
 .side_set 3
 
 public read_wrap_target:
@@ -86,6 +86,7 @@ public read_wrap_target:
     out  pindirs 8                    side DATA         ; start driving the data bus
 
 idle_data:
+    wait 1 gpio PIN_CLOCK             side DATA         ; wait for the clock to go high with data buffers ENABLED
     wait 0 gpio PIN_CLOCK             side DATA         ; wait for the start of the next cycle with data buffers ENABLED
     set  pindirs 0                    side NOTHING      ; stop driving the data bus
     jmp  delay                        side NOTHING      ; jump to the noe delay code
@@ -93,6 +94,7 @@ idle_data:
 public entry_point:                                     ; *** Default Entry Point ***
 
 idle:
+    wait 1 gpio PIN_CLOCK             side NOTHING      ; wait for the clock to go high  with data buffers DISABLED
     wait 0 gpio PIN_CLOCK [2]         side NOTHING      ; wait for the start of the next cycle with data buffers DISABLED
 
 public write_wrap_target:
@@ -114,7 +116,8 @@ public read_wrap:                                       ; *** READ state machine
 
     jmp  y-- idle_data                side DATA         ; Y=Rnw - skip the FIFO push on read cycles (RnW=1)
     in   x 17                         side DATA         ; shift fixed part of ARM address (held in x) into ISR and trigger auto push
-    wait 0 gpio PIN_CLOCK             side DATA         ; wait for the start of the next cycle with data buffers enabled
+    wait 1 gpio PIN_CLOCK             side DATA         ; wait for the clock to go high with data buffers ENABLED
+    wait 0 gpio PIN_CLOCK             side DATA         ; wait for the start of the next cycle with data buffers ENABLED
     in   pins 8                       side NOTHING      ; sample read data
     in   null 24                      side NOTHING      ; pad to 32-bit to align in LSB, and trigger auto push
 
