@@ -10,11 +10,12 @@
 #include "swram.h"
 #include "adt_rom.h"
 
-#define SMC_WRITE 0
-#define SMC_READ  1
+#define SMC_WRITE     0
+#define SMC_READ      1
+#define SMC_DEGLITCH  2
+#define SMC_RNW_INV   3
 
 static PIO pio = pio1;
-static PIO pio_deglitch = pio0;
 
 volatile uint8_t memory[0x8000] __attribute__((aligned(0x8000)))  = "Pi Pico says 'hello' to Acorn Electron!";            // Sideway RAM/ROM area
 
@@ -150,15 +151,15 @@ int main() {
    gpio_set_function(PIN_SELAH, GPIO_FUNC_PIO1);
    gpio_set_function(PIN_SELDT, GPIO_FUNC_PIO1);
 
-   // Setup an additional state machine (in the other PIO) to deglitch Phi0 onto PIN_O0_CLEAN
-   uint offset = pio_add_program(pio_deglitch, &deglitch_phi0_program);
-   deglitch_phi0_program_init(pio_deglitch, 0, offset);
-   pio_sm_set_enabled(pio_deglitch, 0, true);
+   // Setup an additional state machine to deglitch Phi0 onto a PIO interrupt
+   uint offset = pio_add_program(pio, &deglitch_phi0_program);
+   deglitch_phi0_program_init(pio, SMC_DEGLITCH, offset);
+   pio_sm_set_enabled(pio, SMC_DEGLITCH, true);
 
-   // Setup another additional state machine (in the other PIO) to invert RnW onto PIN_RNW_INV
-   offset = pio_add_program(pio_deglitch, &invert_rnw_program);
-   invert_rnw_program_init(pio_deglitch, 1, offset);
-   pio_sm_set_enabled(pio_deglitch, 1, true);
+   // Setup another additional state machine to invert RnW onto PIN_RNW_INV
+   offset = pio_add_program(pio, &invert_rnw_program);
+   invert_rnw_program_init(pio, SMC_RNW_INV, offset);
+   pio_sm_set_enabled(pio, SMC_RNW_INV, true);
 
    // Load the access_ram program that's shared by the read and write state machines
    offset = pio_add_program(pio, &access_ram_program);
