@@ -74,7 +74,7 @@ wait_for_clock_high:
 ;; were conflicts, I believe the higher number state machine should win, which is the read state machine.
 ;;
 
-.program access_ram                                     ; 26 instructions
+.program access_ram                                     ; 24 instructions
 .side_set 3
 
 public read_wrap_target:
@@ -88,16 +88,16 @@ public read_wrap_target:
 idle_data:
     wait 0 gpio PIN_CLOCK             side DATA         ; wait for the start of the next cycle with data buffers ENABLED
     set  pindirs 0                    side NOTHING      ; stop driving the data bus
-    jmp  delay [1]                    side NOTHING      ; jump to the noe delay code
+    jmp  delay                        side NOTHING      ; jump to the noe delay code
 
 public entry_point:                                     ; *** Default Entry Point ***
 
 idle:
-    wait 0 gpio PIN_CLOCK [3]         side NOTHING      ; wait for the start of the next cycle with data buffers DISABLED
+    wait 0 gpio PIN_CLOCK [2]         side NOTHING      ; wait for the start of the next cycle with data buffers DISABLED
 
 public write_wrap_target:
 delay:
-    set  y DELAY_CYCLES               side NOTHING      ; should be reached 4 instructions after cycle start IN ALL CASES
+    set  y DELAY_CYCLES               side NOTHING      ; should be reached 3 instructions after cycle start IN ALL CASES
 loop:
     jmp  y-- loop                     side ADDRESS_LOW  ; delay to allow nOE to stablize
 
