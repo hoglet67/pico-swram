@@ -20,7 +20,7 @@
 .define        ADDRESS_HIGH   0b101
 .define        DATA           0b110
 
-.define public SYSCLK_MHZ     150
+.define public SYSCLK_MHZ     125
 
 .define        DELAY_NS       150
 .define        GLITCH_NS       25
