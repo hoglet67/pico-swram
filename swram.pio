@@ -20,12 +20,12 @@
 .define        ADDRESS_HIGH   0b101
 .define        DATA           0b110
 
-.define public SYSCLK_MHZ     125
+.define public SYSCLK_MHZ     150
 
 .define        DELAY_NS       150
 .define        GLITCH_NS       25
 .define        GLITCH_CYCLES   (GLITCH_NS*SYSCLK_MHZ)/1000
-.define        DELAY_CYCLES   (((DELAY_NS*SYSCLK_MHZ)/1000) - GLITCH_CYCLES - 4)
+.define        DELAY_CYCLES   (((DELAY_NS*SYSCLK_MHZ)/1000) - GLITCH_CYCLES)
 
 ;; PIN_CLOCK is the clock used by the access_ram state machines.
 ;;
