@@ -25,7 +25,7 @@
 .define        DELAY_NS       150
 .define        GLITCH_NS       25
 .define        GLITCH_CYCLES   (GLITCH_NS*SYSCLK_MHZ)/1000
-.define        DELAY_CYCLES   (((DELAY_NS*SYSCLK_MHZ)/1000) - GLITCH_CYCLES)
+.define        DELAY_CYCLES   (((DELAY_NS*SYSCLK_MHZ)/1000) - GLITCH_CYCLES - 4)
 
 ;; PIN_CLOCK is the clock used by the access_ram state machines.
 ;;
