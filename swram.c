@@ -131,11 +131,6 @@ int main() {
    deglitch_phi0_program_init(pio, SMC_DEGLITCH, offset);
    pio_sm_set_enabled(pio, SMC_DEGLITCH, true);
 
-   // Setup another additional state machine to invert RnW onto PIN_RNW_INV
-   offset = pio_add_program(pio, &invert_rnw_program);
-   invert_rnw_program_init(pio, SMC_RNW_INV, offset);
-   pio_sm_set_enabled(pio, SMC_RNW_INV, true);
-
    // Load the access_ram program that's shared by the read and write state machines
    offset = pio_add_program(pio, &access_ram_program);
 
