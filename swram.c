@@ -7,7 +7,6 @@
 #include "hardware/dma.h"
 #include "swram.pio.h"
 
-#include "swram.h"
 #include "adt_rom.h"
 
 #define SMC_WRITE     0
