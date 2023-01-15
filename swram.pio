@@ -15,37 +15,10 @@
 .define public SYSCLK_MHZ     125
 
 .define        DELAY_NS       150
-.define        GLITCH_NS       25
-.define        GLITCH_CYCLES   (GLITCH_NS*SYSCLK_MHZ)/1000
-.define        DELAY_CYCLES   (((DELAY_NS*SYSCLK_MHZ)/1000) - GLITCH_CYCLES - 4)
-
-.define        cycle_start      0
+.define        DELAY_CYCLES   (((DELAY_NS*SYSCLK_MHZ)/1000) - 4)
 
 ;;
-;; IMPORTANT with everything loaded into one PIO there is only one spare instruction
-;;
-
-;;
-;; DEGLITCH STATE MACHINE
-;;
-;; This will go away when we have PCB based construction
-;;
-
-.program deglitch_phi0                                  ; 6 instructions
-wait_for_clock_low:
-    wait 0 gpio PIN_O0 [GLITCH_CYCLES-1]                ; wait for the clock to go low
-    jmp  pin wait_for_clock_low                         ; reject low glitches < GLITCH_NS in length
-    irq  clear cycle_start                              ; blip cycle start low for one cycle
-    irq  set   cycle_start
-.wrap_target
-wait_for_clock_high:
-    wait 1 gpio PIN_O0 [GLITCH_CYCLES-1]                ; wait for the clock to go high
-    jmp  pin wait_for_clock_low                         ; reject high glitches < GLITCH_NS in length
-.wrap
-
-
-;;
-;; ACCESS RAM DEGLITCH STATE MACHINE
+;; ACCESS RAM STATE MACHINE
 ;;
 ;; There are two instances of this, one for reads, the other for write, with different wrap targets.
 ;;
@@ -53,7 +26,7 @@ wait_for_clock_high:
 ;; were conflicts, I believe the higher number state machine should win, which is the read state machine.
 ;;
 
-.program access_ram                                     ; 24 instructions
+.program access_ram                                     ; 27 instructions
 .side_set 3
 
 public read_wrap_target:
@@ -65,14 +38,16 @@ public read_wrap_target:
     out  pindirs 8                    side DATA         ; start driving the data bus
 
 idle_data:
-    wait 0 irq cycle_start            side DATA         ; wait for the start of the next cycle with data buffers ENABLED
+    wait 1 gpio PIN_O0                side DATA         ; wait for the start of the next cycle with data buffers ENABLED
+    wait 0 gpio PIN_O0                side DATA         ; wait for the start of the next cycle with data buffers ENABLED
     set  pindirs 0                    side NOTHING      ; stop driving the data bus
     jmp  delay                        side NOTHING      ; jump to the noe delay code
 
 public entry_point:                                     ; *** Default Entry Point ***
 
 idle:
-    wait 0 irq cycle_start [2]        side NOTHING      ; wait for the start of the next cycle with data buffers DISABLED
+    wait 1 gpio PIN_O0                side NOTHING      ; wait for the start of the next cycle with data buffers DISABLED
+    wait 0 gpio PIN_O0 [2]            side NOTHING      ; wait for the start of the next cycle with data buffers DISABLED
 
 public write_wrap_target:
 delay:
@@ -93,7 +68,9 @@ public read_wrap:                                       ; *** READ state machine
 
     jmp  y-- idle_data                side DATA         ; Y=Rnw - skip the FIFO push on read cycles (RnW=1)
     in   x 17                         side DATA         ; shift fixed part of ARM address (held in x) into ISR and trigger auto push
-    wait 0 irq cycle_start            side DATA         ; wait for the start of the next cycle with data buffers ENABLED
+
+    wait 1 gpio PIN_O0                side DATA         ; wait for the start of the next cycle with data buffers ENABLED
+    wait 0 gpio PIN_O0                side DATA         ; wait for the start of the next cycle with data buffers ENABLED
     in   pins 8                       side NOTHING      ; sample read data
     in   null 24                      side NOTHING      ; pad to 32-bit to align in LSB, and trigger auto push
 
@@ -101,16 +78,6 @@ public write_wrap:                                      ; *** WRITE state machin
 
 
 % c-sdk {
-
-    void deglitch_phi0_program_init(PIO pio, uint sm, uint offset) {
-        //pio_gpio_init(pio, PIN_O0_CLEAN);
-        //pio_sm_set_consecutive_pindirs(pio, sm, PIN_O0_CLEAN, 1, true);
-        pio_sm_config c = deglitch_phi0_program_get_default_config(offset);
-        //sm_config_set_sideset_pins(&c, PIN_O0_CLEAN);
-        sm_config_set_jmp_pin (&c, PIN_O0);
-        pio_sm_init(pio, sm, offset, &c);
-        }
-
 
     void access_ram_program_init(PIO pio, uint sm, uint offset, int write_smc) {
         pio_sm_config c = access_ram_program_get_default_config(offset);

@@ -11,8 +11,6 @@
 
 #define SMC_WRITE     0
 #define SMC_READ      1
-#define SMC_DEGLITCH  2
-#define SMC_RNW_INV   3
 
 static PIO pio = pio1;
 
@@ -126,13 +124,8 @@ int main() {
    gpio_set_function(PIN_SELAH, GPIO_FUNC_PIO1);
    gpio_set_function(PIN_SELDT, GPIO_FUNC_PIO1);
 
-   // Setup an additional state machine to deglitch Phi0 onto a PIO interrupt
-   uint offset = pio_add_program(pio, &deglitch_phi0_program);
-   deglitch_phi0_program_init(pio, SMC_DEGLITCH, offset);
-   pio_sm_set_enabled(pio, SMC_DEGLITCH, true);
-
    // Load the access_ram program that's shared by the read and write state machines
-   offset = pio_add_program(pio, &access_ram_program);
+   uint offset = pio_add_program(pio, &access_ram_program);
 
    // Initialize the read state machine (handles read accesses)
    access_ram_program_init(pio, SMC_READ, offset, 0);
