@@ -11,6 +11,7 @@
 
 #define SMC_WRITE     0
 #define SMC_READ      1
+#define SMC_MIRROR    2
 
 static PIO pio = pio1;
 
@@ -146,6 +147,15 @@ int main() {
    setup_write_dma(SMC_WRITE);
 
    stdio_init_all();
+
+   // Start mirroring RGB
+   offset = pio_add_program(pio, &mirror_bits_program);
+   mirror_bits_program_init(pio, SMC_MIRROR, offset, PIN_RGB_RI, PIN_RGB_RO, 3);
+   pio_sm_set_enabled(pio, SMC_MIRROR, true);
+
+   gpio_init(PIN_RGB_EN);
+   gpio_set_dir(PIN_RGB_EN, GPIO_OUT);
+   gpio_put(PIN_RGB_EN, 0);
 
    // main_loop();
 

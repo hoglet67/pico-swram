@@ -2,6 +2,17 @@
 .define public PIN_O0         18
 .define public PIN_NOE        19
 
+.define public PIN_RGB_EN      0
+.define public PIN_SYNC_IN     1
+
+.define public PIN_RGB_RO     10
+.define public PIN_RGB_GO     11
+.define public PIN_RGB_BO     12
+
+.define public PIN_RGB_RI     20
+.define public PIN_RGB_GI     21
+.define public PIN_RGB_BI     22
+
 .define public PIN_SEL_BASE   26
 .define public PIN_SELDT      (PIN_SEL_BASE + 0)
 .define public PIN_SELAH      (PIN_SEL_BASE + 1)
@@ -77,6 +88,19 @@ public read_wrap:                                       ; *** READ state machine
 public write_wrap:                                      ; *** WRITE state machine wraps to write_wrap_target ***
 
 
+;;
+;; PASS THROUGH THE RGB INPUT TO RGB OUTPUT
+;;
+;; Simple copy the RGB input to the RGB output for Electron mode 0...6
+;;
+
+.program mirror_bits
+.wrap_target
+	mov pins,pins
+.wrap
+
+
+
 % c-sdk {
 
     void access_ram_program_init(PIO pio, uint sm, uint offset, int write_smc) {
@@ -95,4 +119,16 @@ public write_wrap:                                      ; *** WRITE state machin
         }
         pio_sm_init(pio, sm, offset + access_ram_offset_entry_point, &c);
         }
+
+    void mirror_bits_program_init(PIO pio, uint sm, uint prog_offset, uint input_gpio, uint output_gpio, uint noof_bits) {
+    	pio_sm_config cfg = mirror_bits_program_get_default_config(prog_offset);
+    	sm_config_set_in_pins(&cfg, input_gpio);
+    	sm_config_set_out_pins(&cfg, output_gpio, noof_bits);
+    	pio_sm_set_consecutive_pindirs(pio, sm, output_gpio, noof_bits, true);
+    	pio_sm_init(pio, sm, prog_offset, &cfg);
+    	for (int i = 0; i < noof_bits; i++) {
+            pio_gpio_init(pio, output_gpio + i);
+        }
+    }
+
 %}
