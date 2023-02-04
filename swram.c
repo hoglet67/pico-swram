@@ -15,6 +15,8 @@
 
 static PIO pio = pio1;
 
+static const char *version = "EEVA fw 1.00";
+
 volatile uint8_t memory[0x8000] __attribute__((aligned(0x8000)))  = "Pi Pico says 'hello' to Acorn Electron!";            // Sideway RAM/ROM area
 
 // Chained DMA courtesy of Andrew Gordon (arg)
@@ -102,7 +104,16 @@ static void set_x(unsigned smc, unsigned x) {
    pio_sm_exec_wait_blocking(pio, smc, pio_encode_mov(pio_x, pio_osr));
 }
 
+static void regdump(char c) {
+   printf("%c", c);
+   for (int i = 0; i <= 15; i++) {
+      printf("\tR%d=%02X", i, memory[0x3FF0 + i]);
+   }
+   printf("\n");
+}
+
 int main() {
+   uint8_t command;
 
    // The system clock speed is set as a constant in the PIO file
    set_sys_clock_khz(SYSCLK_MHZ * 1000, true);
@@ -159,7 +170,56 @@ int main() {
 
    // main_loop();
 
+   // I claim the last 16 bytes op the first shadow ROM banks as registers for communication
+   // between the Electron and the Pico.
+
+   //    R0 (&BFF0) = command register
+   //    R1 (&BFF1) = data register 1
+   //    R2 (&BFF2) = data register 2
+   //    ....
+   //    R16 (&BFFF) = data register 16
+   //
+   //    The Electron can first write its data to the data registers, e.g. plotting a line from (0,0) to (1280,1024) in red:
+   //    R1 := 0
+   //    R2 := 0
+   //    R3 := 0
+   //    R4 := 0
+   //    R5 := 0
+   //    R6 := &05
+   //    R7 := 0
+   //    R8 := &04
+   //    R9 := 1
+   //    and at last R0 := 7     (just a random picket command number)
+   //
+   //    The Pico notices that R0 has changed from &00 to &07 and executes the command. After it's ready
+   //    it must clear R0 so the Electron knows that the next command can be prepared and executed.
+
    while (true) {
-      tight_loop_contents();
+      while (! (command = memory[0x3FF0])) {
+         tight_loop_contents();
+      }
+
+      printf("Received command &%01X\n", command);
+      regdump('S');
+      switch (command) {
+      case 0x01:      // Command 0x01: version
+         memcpy((void *)memory + 0x3FF1, version, 12);
+         break;
+
+      case 0x02:      // Command 0x02: switch RGB pass-through on (MODE 0...6)
+         pio_sm_set_enabled(pio, SMC_MIRROR, true);
+         break;
+
+      case 0x03:      // Command 0x02: switch RGB pass-through off (MODE 7 and higher)
+         pio_sm_set_enabled(pio, SMC_MIRROR, false);
+         break;
+
+
+      }
+
+      memory[0x3FF0] = 0;     // command executed
+      regdump('E');
+      printf("\n");
    }
+
 }
