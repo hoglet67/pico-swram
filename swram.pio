@@ -23,7 +23,7 @@
 .define        ADDRESS_HIGH   0b101
 .define        DATA           0b110
 
-.define public SYSCLK_MHZ     125
+.define public SYSCLK_MHZ     144
 
 .define        DELAY_NS       150
 .define        DELAY_CYCLES   (((DELAY_NS*SYSCLK_MHZ)/1000) - 4)
@@ -93,13 +93,19 @@ public write_wrap:                                      ; *** WRITE state machin
 ;;
 ;; Simple copy the RGB input to the RGB output for Electron mode 0...6
 ;;
+;; This version syncronises on the falling edge of sync and then
+;; tries to sample in the middle of each pixel.
+;;
+;; The delays assume the Pico clock is 9x the 16MHz pixel clock, i.e. 144MHz
 
 .program mirror_bits
 .wrap_target
-	mov pins,pins
+    wait 0 gpio PIN_SYNC_IN
+    mov y,x  [3]      ; Load loop counter from constant pre-loaded in X, half pixel delay
+loop:
+    mov pins,pins [7] ; total 9 clocks around the loop
+    jmp y-- loop
 .wrap
-
-
 
 % c-sdk {
 
